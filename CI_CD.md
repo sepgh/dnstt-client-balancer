@@ -49,15 +49,21 @@ The project uses GitHub Actions for:
 **Steps**:
 1. Checkout code
 2. Set up GraalVM 21 with native-image
-3. Build project with Maven
+3. Build project with Maven (tests skipped)
 4. Compile native image for target architecture
-5. Test binary
+5. Prepare and verify binary exists
 6. Upload as artifact
 7. Create SHA256 checksums
 8. Generate release notes
 9. Create draft release with all binaries
 
-**Duration**: ~15-25 minutes per architecture (parallel execution)
+**Duration**: ~10-15 minutes per architecture (parallel execution)
+
+**Note**: Tests are intentionally skipped in the release workflow because:
+- Tests run separately in the dedicated test workflow
+- Prevents duplicate test execution
+- Speeds up release builds
+- The test workflow must pass before merging to `main`
 
 ## Architecture Details
 

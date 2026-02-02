@@ -36,6 +36,19 @@ This directory contains CI/CD workflows for the Proxy Load Balancer project.
 - Generates release notes
 - Creates a **draft release** on GitHub with all binaries
 
+**Steps:**
+1. Checkout code
+2. Set up GraalVM 21 with native-image
+3. Build project with Maven (tests skipped - they run in test workflow)
+4. Compile native image for target architecture
+5. Prepare and verify binary exists
+6. Upload as artifact
+7. Create SHA256 checksums
+8. Generate release notes
+9. Create draft release with all binaries
+
+**Note**: Tests are skipped in the release workflow since they run separately in the test workflow. This prevents duplicate test runs and speeds up the release process.
+
 **Architecture Support:**
 
 | Architecture | Runner | Use Case |

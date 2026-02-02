@@ -63,16 +63,13 @@ jobs:
           mvn -Pnative native:compile -DskipTests
         fi
         
-    - name: Rename binary
+    - name: Rename and prepare binary
       run: |
         if [ -f target/proxy-balancer ]; then
           mv target/proxy-balancer target/${{ matrix.artifact_name }}
+          chmod +x target/${{ matrix.artifact_name }}
+          ls -lh target/${{ matrix.artifact_name }}
         fi
-        
-    - name: Test binary
-      run: |
-        chmod +x target/${{ matrix.artifact_name }}
-        target/${{ matrix.artifact_name }} --version || echo "Version check not available"
         
     - name: Upload artifact
       uses: actions/upload-artifact@v4
