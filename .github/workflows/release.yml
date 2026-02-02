@@ -19,11 +19,12 @@ jobs:
             runner: ubuntu-latest
             artifact_name: proxy-balancer-linux-amd64
             
-          # Linux ARM64
-          - os: linux
-            arch: arm64
-            runner: ubuntu-latest-arm64
-            artifact_name: proxy-balancer-linux-arm64
+          # Linux ARM64 - DISABLED: Requires GitHub Team/Enterprise plan or self-hosted runner
+          # Uncomment and set up self-hosted ARM64 runner to enable
+          # - os: linux
+          #   arch: arm64
+          #   runner: [self-hosted, linux, arm64]  # Use self-hosted runner
+          #   artifact_name: proxy-balancer-linux-arm64
             
           # Linux x86 (32-bit) - using cross-compilation
           - os: linux

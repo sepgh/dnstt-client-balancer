@@ -49,13 +49,14 @@ This directory contains CI/CD workflows for the Proxy Load Balancer project.
 
 **Note**: Tests are skipped in the release workflow since they run separately in the test workflow. This prevents duplicate test runs and speeds up the release process.
 
-**Architecture Support:**
+**Build Matrix**:
+| Platform | Architecture | Binary Name | Status |
+|----------|-------------|-------------|--------|
+| Linux | AMD64 (x86_64) | `proxy-balancer-linux-amd64` | ✅ Enabled |
+| Linux | ARM64 (aarch64) | `proxy-balancer-linux-arm64` | ⚠️ Disabled* |
+| Linux | x86 (i686) | `proxy-balancer-linux-x86` | ✅ Enabled |
 
-| Architecture | Runner | Use Case |
-|-------------|---------|----------|
-| AMD64 (x86_64) | `ubuntu-latest` | Standard Linux servers, desktops |
-| ARM64 (aarch64) | `ubuntu-latest-arm64` | Raspberry Pi, ARM servers, cloud ARM instances |
-| x86 (i686) | `ubuntu-latest` (cross-compile) | Legacy 32-bit systems |
+*ARM64 requires GitHub Team/Enterprise plan or self-hosted runner. See `ARM64_BUILD.md` for setup instructions.
 
 **Note:** The release is created as a **draft**, allowing you to:
 1. Review the binaries
@@ -171,14 +172,17 @@ The workflows use `GITHUB_TOKEN` which is automatically provided by GitHub Actio
 
 ## Troubleshooting
 
-### ARM64 Build Fails
+### ARM64 Build Waiting Forever
 
-**Error:** `No runner matching the specified labels`
+**Error:** `Waiting for a runner to pick up this job...`
 
-**Solution:** Either:
-1. Use GitHub's ARM64 runners (if available)
-2. Set up a self-hosted ARM64 runner
-3. Remove ARM64 from the build matrix
+**Cause:** ARM64 runners are only available on GitHub Team/Enterprise plans, not the free tier.
+
+**Solution:** 
+1. **Recommended**: Set up a self-hosted ARM64 runner (see `ARM64_BUILD.md`)
+2. Use Oracle Cloud free tier ARM instance as runner (free forever)
+3. Upgrade to GitHub Team plan ($4/user/month)
+4. Keep ARM64 disabled (current default)
 
 ### x86 Build Fails
 
