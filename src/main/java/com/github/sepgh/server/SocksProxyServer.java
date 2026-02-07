@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketOptions;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -18,10 +19,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class SocksProxyServer {
     private static final Logger logger = LoggerFactory.getLogger(SocksProxyServer.class);
     
+    private static final int BUFFER_SIZE = 65536; // 64KB for better throughput
+    private static final int SO_RCVBUF = 262144; // 256KB receive buffer
+    private static final int SO_SNDBUF = 262144; // 256KB send buffer
+    
     private final String host;
     private final int port;
     private final HealthChecker healthChecker;
-    private final ExecutorService executor = Executors.newCachedThreadPool();
+    private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final AtomicBoolean running = new AtomicBoolean(false);
     private ServerSocket serverSocket;
     private Thread acceptThread;
@@ -40,6 +45,7 @@ public class SocksProxyServer {
 
         serverSocket = new ServerSocket();
         serverSocket.setReuseAddress(true);
+        serverSocket.setReceiveBufferSize(SO_RCVBUF);
         serverSocket.bind(new InetSocketAddress(host, port));
         running.set(true);
 
@@ -86,6 +92,13 @@ public class SocksProxyServer {
         while (running.get()) {
             try {
                 Socket clientSocket = serverSocket.accept();
+                
+                // Optimize client socket
+                clientSocket.setTcpNoDelay(true);
+                clientSocket.setKeepAlive(true);
+                clientSocket.setReceiveBufferSize(SO_RCVBUF);
+                clientSocket.setSendBufferSize(SO_SNDBUF);
+                
                 logger.debug("Accepted connection from {}", clientSocket.getRemoteSocketAddress());
                 
                 executor.submit(() -> handleClient(clientSocket));
@@ -111,19 +124,21 @@ public class SocksProxyServer {
 
             Socket backendSocket = new Socket();
             try {
+                // Optimize backend socket
+                backendSocket.setTcpNoDelay(true);
+                backendSocket.setKeepAlive(true);
+                backendSocket.setReceiveBufferSize(SO_RCVBUF);
+                backendSocket.setSendBufferSize(SO_SNDBUF);
+                
                 backendSocket.connect(new InetSocketAddress(backend.getHost(), backend.getPort()), 5000);
                 
-                Thread clientToBackend = new Thread(
-                    new SocketForwarder(clientSocket, backendSocket, "client->backend"),
-                    "forward-c2b-" + System.currentTimeMillis()
+                // Use virtual threads for forwarding (Java 21+)
+                Thread clientToBackend = Thread.ofVirtual().name("forward-c2b").start(
+                    new SocketForwarder(clientSocket, backendSocket, "client->backend")
                 );
-                Thread backendToClient = new Thread(
-                    new SocketForwarder(backendSocket, clientSocket, "backend->client"),
-                    "forward-b2c-" + System.currentTimeMillis()
+                Thread backendToClient = Thread.ofVirtual().name("forward-b2c").start(
+                    new SocketForwarder(backendSocket, clientSocket, "backend->client")
                 );
-
-                clientToBackend.start();
-                backendToClient.start();
 
                 clientToBackend.join();
                 backendToClient.join();
@@ -157,7 +172,7 @@ public class SocksProxyServer {
 
         @Override
         public void run() {
-            byte[] buffer = new byte[8192];
+            byte[] buffer = new byte[BUFFER_SIZE];
             try {
                 var in = source.getInputStream();
                 var out = destination.getOutputStream();
@@ -165,7 +180,7 @@ public class SocksProxyServer {
                 int bytesRead;
                 while ((bytesRead = in.read(buffer)) != -1) {
                     out.write(buffer, 0, bytesRead);
-                    out.flush();
+                    // Remove flush() for better throughput - TCP will handle buffering
                 }
             } catch (IOException e) {
                 logger.debug("Connection closed [{}]: {}", direction, e.getMessage());

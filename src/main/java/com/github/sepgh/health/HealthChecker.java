@@ -31,7 +31,7 @@ public class HealthChecker {
     private final Map<String, ProxyClient> activeClients = new ConcurrentHashMap<>();
     private final AtomicReference<ProxyClient> selectedProxy = new AtomicReference<>();
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
-    private final ExecutorService testExecutor = Executors.newFixedThreadPool(5);
+    private final ExecutorService testExecutor = Executors.newVirtualThreadPerTaskExecutor();
     
     private volatile boolean running = false;
     private final int healthCheckIntervalSeconds;

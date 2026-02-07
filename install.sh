@@ -17,8 +17,12 @@ SERVICE_USER="proxy-balancer"
 SERVICE_GROUP="proxy-balancer"
 REQUIRED_JAVA_VERSION="21"
 REPO_URL="https://github.com/sepgh/dnstt-client-balancer"
+GITHUB_API_URL="https://api.github.com/repos/sepgh/dnstt-client-balancer/releases/latest"
 LISTEN_PORT="${LISTEN_PORT:-1080}"
 UPSTREAM_PORT="${UPSTREAM_PORT:-9080}"
+ARCH=""
+USE_NATIVE_BINARY="false"
+USE_JAR="false"
 
 # Colors for output
 RED='\033[0;31m'
@@ -39,6 +43,37 @@ check_root() {
         log_error "This script must be run as root (use sudo)"
         exit 1
     fi
+}
+
+# Detect system architecture
+detect_architecture() {
+    ARCH=$(uname -m)
+    case "$ARCH" in
+        x86_64|amd64)
+            ARCH="amd64"
+            USE_NATIVE_BINARY="true"
+            USE_JAR="false"
+            log_info "Detected AMD64 architecture - will use native binary (no Java required)"
+            ;;
+        aarch64|arm64)
+            ARCH="arm64"
+            USE_NATIVE_BINARY="false"
+            USE_JAR="true"
+            log_info "Detected ARM64 architecture - will use JAR (Java required)"
+            ;;
+        armv7l|armhf)
+            ARCH="arm"
+            USE_NATIVE_BINARY="false"
+            USE_JAR="true"
+            log_info "Detected ARM architecture - will use JAR (Java required)"
+            ;;
+        *)
+            ARCH="unknown"
+            USE_NATIVE_BINARY="false"
+            USE_JAR="true"
+            log_warn "Unknown architecture: $ARCH - will use JAR (Java required)"
+            ;;
+    esac
 }
 
 # Detect Linux distribution
@@ -159,60 +194,154 @@ EOF
     fi
 }
 
-# Install build dependencies
-install_build_deps() {
-    log_info "Installing build dependencies..."
+# Install curl if needed (required for downloading releases)
+install_curl() {
+    if command -v curl &> /dev/null; then
+        return 0
+    fi
     
+    log_info "Installing curl..."
     case $PKG_MANAGER in
         apt)
             apt-get update -qq
-            apt-get install -y git maven curl
+            apt-get install -y curl
             ;;
         dnf)
-            dnf install -y git maven curl
+            dnf install -y curl
             ;;
         yum)
-            yum install -y git curl
-            # Maven might not be in default repos, install manually
-            if ! command -v mvn &> /dev/null; then
-                log_info "Installing Maven manually..."
-                curl -fsSL https://dlcdn.apache.org/maven/maven-3/3.9.6/binaries/apache-maven-3.9.6-bin.tar.gz | tar xz -C /opt
-                ln -sf /opt/apache-maven-3.9.6/bin/mvn /usr/local/bin/mvn
-            fi
+            yum install -y curl
             ;;
         pacman)
-            pacman -Sy --noconfirm git maven curl
+            pacman -Sy --noconfirm curl
             ;;
         zypper)
-            zypper --non-interactive install git maven curl
+            zypper --non-interactive install curl
             ;;
     esac
 }
 
-# Clone and build project
-build_project() {
-    log_info "Building project..."
+# Download native binary from GitHub releases (AMD64 only)
+download_native_binary() {
+    log_info "Downloading native binary from GitHub releases..."
     
     TEMP_DIR=$(mktemp -d)
     cd "$TEMP_DIR"
     
-    log_info "Cloning repository..."
-    git clone --depth 1 "$REPO_URL" repo
-    cd repo
+    # Get latest release download URL for native binary
+    log_info "Fetching latest release information..."
+    DOWNLOAD_URL=$(curl -fsSL "$GITHUB_API_URL" | grep -o '"browser_download_url": "[^"]*proxy-balancer"' | grep -v '\.jar"' | head -1 | cut -d '"' -f 4)
     
-    log_info "Building with Maven (this may take a few minutes)..."
-    mvn clean package -DskipTests -q
-    
-    if [[ ! -f "target/proxy-balancer.jar" ]]; then
-        log_error "Build failed: proxy-balancer.jar not found"
+    if [[ -z "$DOWNLOAD_URL" ]]; then
+        log_error "Failed to find native binary in latest release"
+        log_error "Please check https://github.com/sepgh/dnstt-client-balancer/releases"
         exit 1
     fi
     
-    log_success "Build completed successfully"
-    
-    # Store path for later
-    BUILD_DIR="$TEMP_DIR/repo"
+    log_info "Downloading from: $DOWNLOAD_URL"
+    if curl -fsSL -o proxy-balancer "$DOWNLOAD_URL"; then
+        chmod +x proxy-balancer
+        log_success "Native binary downloaded successfully"
+        
+        # Create target directory
+        mkdir -p target
+        mv proxy-balancer target/
+        BUILD_DIR="$TEMP_DIR"
+        
+        # Create systemd service file for native binary
+        create_native_binary_service_file
+    else
+        log_error "Failed to download native binary"
+        exit 1
+    fi
 }
+
+# Download JAR from GitHub releases (ARM architectures)
+download_jar() {
+    log_info "Downloading JAR file from GitHub releases..."
+    
+    TEMP_DIR=$(mktemp -d)
+    cd "$TEMP_DIR"
+    
+    # Get latest release download URL for JAR
+    log_info "Fetching latest release information..."
+    DOWNLOAD_URL=$(curl -fsSL "$GITHUB_API_URL" | grep -o '"browser_download_url": "[^"]*proxy-balancer\.jar"' | cut -d '"' -f 4)
+    
+    if [[ -z "$DOWNLOAD_URL" ]]; then
+        log_error "Failed to find JAR file in latest release"
+        log_error "Please check https://github.com/sepgh/dnstt-client-balancer/releases"
+        exit 1
+    fi
+    
+    log_info "Downloading from: $DOWNLOAD_URL"
+    if curl -fsSL -o proxy-balancer.jar "$DOWNLOAD_URL"; then
+        log_success "JAR file downloaded successfully"
+        
+        # Create target directory
+        mkdir -p target
+        mv proxy-balancer.jar target/
+        BUILD_DIR="$TEMP_DIR"
+        
+        # Create systemd service file for JAR
+        create_jar_service_file
+    else
+        log_error "Failed to download JAR file"
+        exit 1
+    fi
+}
+
+# Create systemd service file for native binary
+create_native_binary_service_file() {
+    mkdir -p "$TEMP_DIR/systemd"
+    cat > "$TEMP_DIR/systemd/proxy-balancer.service" << 'EOF'
+[Unit]
+Description=SOCKS Proxy Load Balancer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=proxy-balancer
+Group=proxy-balancer
+WorkingDirectory=/opt/proxy-balancer
+ExecStart=/opt/proxy-balancer/proxy-balancer /etc/proxy-balancer/config.yaml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=proxy-balancer
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+# Create systemd service file for JAR execution
+create_jar_service_file() {
+    mkdir -p "$TEMP_DIR/systemd"
+    cat > "$TEMP_DIR/systemd/proxy-balancer.service" << 'EOF'
+[Unit]
+Description=SOCKS Proxy Load Balancer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=proxy-balancer
+Group=proxy-balancer
+WorkingDirectory=/opt/proxy-balancer
+ExecStart=/usr/bin/java -jar /opt/proxy-balancer/proxy-balancer.jar /etc/proxy-balancer/config.yaml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=proxy-balancer
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
 
 # Create system user
 create_user() {
@@ -233,8 +362,15 @@ install_files() {
     mkdir -p "$CONFIG_DIR"
     mkdir -p "$LOG_DIR"
     
-    # Copy JAR file
-    cp "$BUILD_DIR/target/proxy-balancer.jar" "$INSTALL_DIR/"
+    # Copy binary or JAR file
+    if [[ "$USE_NATIVE_BINARY" == "true" ]]; then
+        cp "$BUILD_DIR/target/proxy-balancer" "$INSTALL_DIR/"
+        chmod +x "$INSTALL_DIR/proxy-balancer"
+        log_info "Installed native binary (no Java required)"
+    else
+        cp "$BUILD_DIR/target/proxy-balancer.jar" "$INSTALL_DIR/"
+        log_info "Installed JAR file (requires Java)"
+    fi
     
     # Create default config (forward to SOCKS on port 9080)
     cat > "$CONFIG_DIR/config.yaml" << EOF
@@ -268,7 +404,7 @@ proxies:
       port: $UPSTREAM_PORT
 EOF
     
-    # Copy systemd service file
+    # Copy systemd service file (already created in download function)
     cp "$BUILD_DIR/systemd/proxy-balancer.service" /etc/systemd/system/
     
     # Set permissions
@@ -390,16 +526,29 @@ main() {
     fi
     
     check_root
+    detect_architecture
     detect_distro
     get_package_manager
     
-    # Check and install Java if needed
-    if ! check_java_version; then
-        install_java
+    # Install curl (needed for downloading)
+    install_curl
+    
+    # Download appropriate binary based on architecture
+    if [[ "$USE_NATIVE_BINARY" == "true" ]]; then
+        log_info "Downloading native binary for AMD64 (no Java required)"
+        download_native_binary
+    elif [[ "$USE_JAR" == "true" ]]; then
+        log_info "Downloading JAR for $ARCH architecture (Java required)"
+        # Install Java if needed (only for JAR execution)
+        if ! check_java_version; then
+            install_java
+        fi
+        download_jar
+    else
+        log_error "Unable to determine installation method"
+        exit 1
     fi
     
-    install_build_deps
-    build_project
     create_user
     install_files
     setup_service
