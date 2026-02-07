@@ -32,6 +32,110 @@ The application consists of several key components:
 4. **Proxy Tester**: Tests SOCKS proxies using actual connections
 5. **SOCKS Proxy Server**: Forwards incoming SOCKS connections to the selected backend proxy
 
+
+
+## Installation (Linux)
+
+### Quick Install (One Command)
+
+Install on any Linux server with a single command:
+
+```bash
+# Using curl
+curl -fsSL https://raw.githubusercontent.com/sepgh/dnstt-client-balancer/main/install.sh | sudo bash
+
+# Using wget
+wget -qO- https://raw.githubusercontent.com/sepgh/dnstt-client-balancer/main/install.sh | sudo bash
+```
+
+The installer automatically:
+- Detects your Linux distribution (Debian/Ubuntu, Fedora, CentOS/RHEL, Arch, openSUSE)
+- If your CPU arch is `amd` based, it will use built binary from latest release.
+- If your CPU arch is `arm` based, it will check for java 21+ installation and installs it if missing
+- Sets `amd` systems to use binary app and `arm` systems to jus `java -jar` format.
+- Creates a dedicated system user (`proxy-balancer`)
+- Installs files to standard locations
+- Sets up a production-ready systemd service
+
+### Installation Paths
+
+| Component | Path |
+|-----------|------|
+| JAR file | `/opt/proxy-balancer/proxy-balancer.jar` |
+| Config file | `/etc/proxy-balancer/config.yaml` |
+| Log directory | `/var/log/proxy-balancer` |
+| Systemd service | `/etc/systemd/system/proxy-balancer.service` |
+
+### Default Configuration
+
+The default configuration:
+- Listens on `127.0.0.1:1080`
+- Forwards to a SOCKS proxy on `127.0.0.1:9080`
+
+Customize ports during installation:
+
+```bash
+LISTEN_PORT=8080 UPSTREAM_PORT=1080 curl -fsSL .../install.sh | sudo bash
+```
+
+### Service Management
+
+```bash
+# Start the service
+sudo systemctl start proxy-balancer
+
+# Stop the service
+sudo systemctl stop proxy-balancer
+
+# Restart after config changes
+sudo systemctl restart proxy-balancer
+
+# Check status
+sudo systemctl status proxy-balancer
+
+# View logs
+sudo journalctl -u proxy-balancer -f
+
+# Enable/disable auto-start on boot
+sudo systemctl enable proxy-balancer
+sudo systemctl disable proxy-balancer
+```
+
+### Edit Configuration
+
+```bash
+sudo nano /etc/proxy-balancer/config.yaml
+sudo systemctl restart proxy-balancer
+```
+
+### Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sepgh/dnstt-client-balancer/main/install.sh | sudo bash -s -- --uninstall
+```
+
+### Manual Installation
+
+If you prefer manual installation:
+
+1. **Install Java 21+**
+2. **Build the project**: _read below_
+3. **Copy files**:
+   ```bash
+   sudo mkdir -p /opt/proxy-balancer /etc/proxy-balancer
+   sudo cp target/proxy-balancer.jar /opt/proxy-balancer/
+   sudo cp config.example.yaml /etc/proxy-balancer/config.yaml
+   sudo cp systemd/proxy-balancer.service /etc/systemd/system/
+   ```
+4. **Create user**: `sudo useradd --system --no-create-home proxy-balancer`
+5. **Set permissions** and **enable service**:
+   ```bash
+   sudo chown -R proxy-balancer:proxy-balancer /opt/proxy-balancer /etc/proxy-balancer
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now proxy-balancer
+   ```
+
+
 ## Building
 
 ### Standard JAR (All Platforms)
@@ -332,105 +436,6 @@ java -Dorg.slf4j.simpleLogger.defaultLogLevel=debug -jar target/dnstt-client-bal
 
 Log levels: `trace`, `debug`, `info`, `warn`, `error`
 
-## Linux Server Installation
-
-### Quick Install (One Command)
-
-Install on any Linux server with a single command:
-
-```bash
-# Using curl
-curl -fsSL https://raw.githubusercontent.com/sepgh/dnstt-client-balancer/main/install.sh | sudo bash
-
-# Using wget
-wget -qO- https://raw.githubusercontent.com/sepgh/dnstt-client-balancer/main/install.sh | sudo bash
-```
-
-The installer automatically:
-- Detects your Linux distribution (Debian/Ubuntu, Fedora, CentOS/RHEL, Arch, openSUSE)
-- Installs Java 21 if not present (or upgrades if needed)
-- Builds the project from source
-- Creates a dedicated system user (`proxy-balancer`)
-- Installs files to standard locations
-- Sets up a production-ready systemd service
-
-### Installation Paths
-
-| Component | Path |
-|-----------|------|
-| JAR file | `/opt/proxy-balancer/proxy-balancer.jar` |
-| Config file | `/etc/proxy-balancer/config.yaml` |
-| Log directory | `/var/log/proxy-balancer` |
-| Systemd service | `/etc/systemd/system/proxy-balancer.service` |
-
-### Default Configuration
-
-The default configuration:
-- Listens on `127.0.0.1:1080`
-- Forwards to a SOCKS proxy on `127.0.0.1:9080`
-
-Customize ports during installation:
-
-```bash
-LISTEN_PORT=8080 UPSTREAM_PORT=1080 curl -fsSL .../install.sh | sudo bash
-```
-
-### Service Management
-
-```bash
-# Start the service
-sudo systemctl start proxy-balancer
-
-# Stop the service
-sudo systemctl stop proxy-balancer
-
-# Restart after config changes
-sudo systemctl restart proxy-balancer
-
-# Check status
-sudo systemctl status proxy-balancer
-
-# View logs
-sudo journalctl -u proxy-balancer -f
-
-# Enable/disable auto-start on boot
-sudo systemctl enable proxy-balancer
-sudo systemctl disable proxy-balancer
-```
-
-### Edit Configuration
-
-```bash
-sudo nano /etc/proxy-balancer/config.yaml
-sudo systemctl restart proxy-balancer
-```
-
-### Uninstall
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/sepgh/dnstt-client-balancer/main/install.sh | sudo bash -s -- --uninstall
-```
-
-### Manual Installation
-
-If you prefer manual installation:
-
-1. **Install Java 21+**
-2. **Build the project**: `mvn clean package`
-3. **Copy files**:
-   ```bash
-   sudo mkdir -p /opt/proxy-balancer /etc/proxy-balancer
-   sudo cp target/proxy-balancer.jar /opt/proxy-balancer/
-   sudo cp config.example.yaml /etc/proxy-balancer/config.yaml
-   sudo cp systemd/proxy-balancer.service /etc/systemd/system/
-   ```
-4. **Create user**: `sudo useradd --system --no-create-home proxy-balancer`
-5. **Set permissions** and **enable service**:
-   ```bash
-   sudo chown -R proxy-balancer:proxy-balancer /opt/proxy-balancer /etc/proxy-balancer
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now proxy-balancer
-   ```
 
 ## License
 
