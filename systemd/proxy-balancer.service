@@ -1,0 +1,50 @@
+[Unit]
+Description=SOCKS Proxy Load Balancer
+Documentation=https://github.com/sepgh/dnstt-client-balancer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=proxy-balancer
+Group=proxy-balancer
+
+# Working directory
+WorkingDirectory=/opt/proxy-balancer
+
+# Main process
+ExecStart=/usr/bin/java -Xms64m -Xmx256m -jar /opt/proxy-balancer/proxy-balancer.jar /etc/proxy-balancer/config.yaml
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=3
+StartLimitIntervalSec=60
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+
+# Allow read access to config
+ReadOnlyPaths=/etc/proxy-balancer
+
+# Allow write access for logs if needed
+ReadWritePaths=/var/log/proxy-balancer
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=proxy-balancer
+
+# Environment
+Environment=JAVA_OPTS="-Dorg.slf4j.simpleLogger.defaultLogLevel=info"
+
+[Install]
+WantedBy=multi-user.target
